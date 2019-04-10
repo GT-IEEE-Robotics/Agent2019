@@ -9,7 +9,7 @@ class StarveSafeReadWriteLock:
         self._readers = 0
         self._writer_waiting = 0
 
-    def acquire_read(self):
+    def acquire(self):
         """ Acquire a read lock. Blocks only if a thread has
         acquired the write lock. """
         self._read_ready.acquire()
@@ -22,7 +22,7 @@ class StarveSafeReadWriteLock:
         finally:
             self._read_ready.release()
 
-    def release_read(self):
+    def release(self):
         """ Release a read lock. """
         self._read_ready.acquire()
         try:
