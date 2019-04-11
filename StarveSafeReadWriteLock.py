@@ -43,6 +43,8 @@ class StarveSafeReadWriteLock:
 
     def release_write(self):
         """ Release a write lock. """
-        self._writer_waiting = 0
-        self._read_ready.notifyAll()
-        self._read_ready.release()
+        try:
+            self._writer_waiting = 0
+            self._read_ready.notifyAll()
+        finally:
+            self._read_ready.release()

@@ -2,8 +2,11 @@ from threading import Thread, Lock
 from queue import PriorityQueue
 from enum import Enum
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
+from MotorControl import MotorController
+import time
 
 # index to data map
+# state coordinate - our location
 names_map = ['waypoints', 'motor speed', 'state coordinate', 'state color', 'obstacles', 'targets']
 
 # starve safe locks
@@ -33,6 +36,7 @@ targets_public_dirty = False
 
 public_locks = [waypoints_public_lock, motor_speed_public_lock, state_coordinate_public_lock, state_color_public_lock, obstacles_public_lock, targets_public_lock]
 public_data = [public_waypoints, public_motor_speed, public_state_coordinate, public_state_color, public_obstacles, public_targets]
+# TODO - make sure there aren't any collisions with this dirty bit - could result in a system not getting new data if another one reads the same data before it
 public_dirty = [waypoints_public_dirty, motor_speed_public_dirty, state_coordinate_public_dirty, state_color_public_dirty, obstacles_public_dirty, targets_public_dirty]
 
 # agent-to-system normal locks and their respective dirty bits
@@ -76,20 +80,41 @@ def localization(motor_speed_lock, motor_speed_dirty, motor_speed, \
     pass
 # out to: locations, objects we see, bases, obstacles (tuples)
 # in from: list of waypoints
-def pathfinding(obstacles_lock, obstacles_dirty, obstacles, \
+def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
                 targets_lock, targets_dirty, targets, \
                 waypoints_lock, waypoints_dirty, waypoints):
     pass
 # out to: list of waypoints
 # in from: motor speed
+
 def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
                   motor_speed_lock, motor_speed_dirty, motor_speed):
-    # while(True):
-    #     if (new_waypoints):
-    #         pass
-    pass
+ 
+    mc = MotorController(5, 10.0, 0.1, 3)
+    coordinates = None   
+    
+    while True:
+        if (waypoints_dirty):
+            # acquire and save dirty waypoints, then update the dirty bit
+            waypoints_lock.acquire()
+            coordinates = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
+            waypoints_dirty = False
+            waypoints_lock.release()
+
+            # do work
+            mc.run(coordinates)
+            
+            # acqure and write new speed
+            motor_speed_lock.acquire()
+            motor_speed = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
+            motor_speed_dirty = True
+            motor_speed_lock.release()
+        else:
+            time.sleep(0.001)
 
 if __name__ == '__main__':
+
+    print("Starting threads and Initializing Agent 007...")
 
     # initialize and start processes
     vision_proc = Thread(target=vision, args=((obstacles_private_lock),(obstacles_private_dirty),(private_obstacles), \
@@ -99,7 +124,7 @@ if __name__ == '__main__':
                                                           (state_coordinate_private_lock),(state_coordinate_private_dirty),(private_state_coordinate), \
                                                           (state_color_private_lock),(state_color_private_dirty),(private_state_color),))
     
-    pathfinding_proc = Thread(target=pathfinding, args=((obstacles_public_lock),(obstacles_public_dirty),(public_obstacles), \
+    path_planning_proc = Thread(target=path_planning, args=((obstacles_public_lock),(obstacles_public_dirty),(public_obstacles), \
                                                         (targets_public_lock),(targets_public_dirty),(public_targets), \
                                                         (waypoints_private_lock),(waypoints_private_dirty),(private_waypoints),))
     
@@ -108,13 +133,12 @@ if __name__ == '__main__':
 
     vision_proc.daemon = True
     localization_proc.daemon = True
-    pathfinding_proc.daemon = True
+    path_planning_proc.daemon = True
     motor_control_proc.daemon = True
 
-    print("Starting threads and Initializing Agent 007... ")
     vision_proc.start()
     localization_proc.start()
-    pathfinding_proc.start()
+    path_planning_proc.start()
     motor_control_proc.start()
 
     # main loop
@@ -125,8 +149,8 @@ if __name__ == '__main__':
     agent_waypoints_dirty = False
     agent_motor_speed = 0
     agent_motor_speed_dirty = False
-    agent_state_coordinates = None
-    agent_state_coordinates_dirty = False
+    agent_state_coordinate = None
+    agent_state_coordinate_dirty = False
     agent_state_color = None
     agent_state_color_dirty = False
     agent_obstacles = None
@@ -134,11 +158,12 @@ if __name__ == '__main__':
     agent_targets = None
     agent_targets_dirty = False
 
-    agent_data = [agent_waypoints, agent_motor_speed, agent_state_coordinates, agent_state_color, agent_obstacles, agent_targets]
-    agent_dirty = [agent_waypoints_dirty, agent_motor_speed_dirty, agent_state_coordinates_dirty, agent_state_color_dirty, agent_obstacles_dirty, \
+    agent_data = [agent_waypoints, agent_motor_speed, agent_state_coordinate, agent_state_color, agent_obstacles, agent_targets]
+    agent_dirty = [agent_waypoints_dirty, agent_motor_speed_dirty, agent_state_coordinate_dirty, agent_state_color_dirty, agent_obstacles_dirty, \
         agent_targets_dirty]
 
     num_data_vectors = len(names_map)
+
     print("Done... Shaken not stirred\n")
 
     while(True):
@@ -156,7 +181,7 @@ if __name__ == '__main__':
         # process data
         for i in range(num_data_vectors):
             if (agent_dirty[i]):
-                agent_dirty[i] = False
+                pass
                 #do whatever - use switch statement to determine what to do
         
         # post data to public
@@ -164,4 +189,5 @@ if __name__ == '__main__':
             if (agent_dirty[i]):
                 public_locks[i].acquire_write()
                 public_data[i] = agent_data[i]
+                agent_dirty[i] = False
                 public_locks[i].release_write()
