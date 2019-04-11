@@ -1,9 +1,18 @@
+# Georgia Tech IEEE Robotics Club
+# SoutheastCon 2019
+
+# Agent.py
+# Integrates software subsystems of the robot by making fresh, formatted data cleanly available
+# as often as possible
+
+# TODO - Handle initial conditions
+
 from threading import Thread, Lock
-from queue import PriorityQueue
-from enum import Enum
+import time
+
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
 from MotorControl import MotorController
-import time
+import Planning
 
 # index to data map
 # state coordinate - our location
@@ -82,8 +91,58 @@ def localization(motor_speed_lock, motor_speed_dirty, motor_speed, \
 # in from: list of waypoints
 def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
                 targets_lock, targets_dirty, targets, \
+                state_coordinate_lock, state_coordinate_dirty, state_coordinate, \
+                state_color_lock, state_color_dirty, state_color, \
                 waypoints_lock, waypoints_dirty, waypoints):
-    pass
+
+    my_obstacles = None
+    my_targets = None
+    my_state_coordinate = None
+    my_state_color = None
+
+    my_waypoints = None
+
+    new_data = False
+
+    while True:
+        # collect any new data
+        if (obstacles_dirty):
+            obstacles_lock.acquire()
+            my_obstacles = obstacles
+            obstacles_dirty = False
+            obstacles_lock.release()
+            new_data = True
+        if (targets_dirty):
+            targets_lock.acquire()
+            my_targets = targets
+            targets_dirty = False
+            targets_lock.release()
+            new_data = True
+        if (state_coordinate_dirty):
+            state_coordinate_lock.acquire()
+            my_state_coordinate = state_coordinate
+            state_coordinate_dirty = False
+            state_coordinate_lock.release()
+            new_data = True
+        if (state_color_dirty):
+            state_color_lock.acquire()
+            my_state_color = state_color
+            state_color_dirty = False
+            state_color_lock.release()
+            new_data = True
+
+        # operate on new data if it exists and make it available to the Agent
+        if (new_data):
+            my_waypoints = Planning.main(my_state_coordinate, my_state_color, my_obstacles, my_targets)
+            waypoints_lock.acquire()
+            waypoints = my_waypoints
+            waypoints_dirty = True
+            waypoints_lock.release()
+            
+            new_data = False
+        else:
+            time.sleep(0.001)
+
 # out to: list of waypoints
 # in from: motor speed
 
@@ -91,18 +150,18 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
                   motor_speed_lock, motor_speed_dirty, motor_speed):
  
     mc = MotorController(5, 10.0, 0.1, 3)
-    coordinates = None   
+    my_waypoints = None   
     
     while True:
         if (waypoints_dirty):
             # acquire and save dirty waypoints, then update the dirty bit
             waypoints_lock.acquire()
-            coordinates = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
+            my_waypoints = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
             waypoints_dirty = False
             waypoints_lock.release()
 
             # do work
-            mc.run(coordinates)
+            mc.run(my_waypoints)
             
             # acqure and write new speed
             motor_speed_lock.acquire()
@@ -126,6 +185,8 @@ if __name__ == '__main__':
     
     path_planning_proc = Thread(target=path_planning, args=((obstacles_public_lock),(obstacles_public_dirty),(public_obstacles), \
                                                         (targets_public_lock),(targets_public_dirty),(public_targets), \
+                                                        (state_coordinate_public_lock),(state_coordinate_public_dirty),(public_state_coordinate), \
+                                                        (state_color_public_lock),(state_color_public_dirty),(public_state_color), \
                                                         (waypoints_private_lock),(waypoints_private_dirty),(private_waypoints),))
     
     motor_control_proc = Thread(target=motor_control, args=((waypoints_public_lock),(waypoints_public_dirty),(public_waypoints), \
