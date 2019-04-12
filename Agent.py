@@ -6,13 +6,16 @@
 # as often as possible
 
 # TODO - Handle initial conditions
+# TODO - include team updates as they're made
+# TODO - switch to notifying threads instead of waiting in a loop
 
-from threading import Thread, Lock
+from threading import Thread, Lock, Event
 import time
 
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
-from MotorControl import MotorController
-import Planning
+from MotorControllerAbstraction.MotorControl import MotorController
+import PathPlanning.Planning
+import OrEvent
 
 # index to data map
 # state coordinate - our location
@@ -21,27 +24,27 @@ names_map = ['waypoints', 'motor speed', 'state coordinate', 'state color', 'obs
 # starve safe locks
 waypoints_public_lock = StarveSafeReadWriteLock()
 public_waypoints = None
-waypoints_public_dirty = False
+waypoints_public_dirty = Event()
 
 motor_speed_public_lock = StarveSafeReadWriteLock()
 public_motor_speed = None
-motor_speed_public_dirty = False
+motor_speed_public_dirty = Event()
 
 state_coordinate_public_lock = StarveSafeReadWriteLock()
 public_state_coordinate = None
-state_coordinate_public_dirty = False
+state_coordinate_public_dirty = Event()
 
 state_color_public_lock = StarveSafeReadWriteLock()
 public_state_color = None
-state_color_public_dirty = False
+state_color_public_dirty = Event()
 
 obstacles_public_lock = StarveSafeReadWriteLock() #location, objects to avoid
 public_obstacles = None
-obstacles_public_dirty = False
+obstacles_public_dirty = Event()
 
 targets_public_lock = StarveSafeReadWriteLock()
 public_targets = None
-targets_public_dirty = False
+targets_public_dirty = Event()
 
 public_locks = [waypoints_public_lock, motor_speed_public_lock, state_coordinate_public_lock, state_color_public_lock, obstacles_public_lock, targets_public_lock]
 public_data = [public_waypoints, public_motor_speed, public_state_coordinate, public_state_color, public_obstacles, public_targets]
@@ -86,7 +89,27 @@ def vision(obstacles_lock, obstacles_dirty, obstacles, \
 def localization(motor_speed_lock, motor_speed_dirty, motor_speed, \
                  state_coordinate_lock, state_coordinate_dirty, state_coordinate, \
                  state_color_lock, state_color_dirty, state_color):
-    pass
+    my_motor_speed = None
+
+    my_state_coordinate = None
+    my_state_color = None
+
+    while True:
+        #my_state_coordinate = polar_ransac.ransac()
+        
+        # get state color somehow
+        state_coordinate_lock.acquire()
+
+        state_coordinate = my_state_coordinate
+        state_coordinate_dirty = True
+        state_coordinate_lock.release()
+
+        state_color_lock.acquire()
+        state_color = my_state_color
+        state_color_dirty = True
+        state_color_lock.release()
+
+        #time.sleep(0.0005)
 # out to: locations, objects we see, bases, obstacles (tuples)
 # in from: list of waypoints
 def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
@@ -102,74 +125,69 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
 
     my_waypoints = None
 
-    new_data = False
+    new_data = OrEvent.OrEvent(obstacles_dirty, targets_dirty, state_coordinate_dirty, state_color_dirty)
 
     while True:
+
+        new_data.wait()
+
         # collect any new data
-        if (obstacles_dirty):
+        if (obstacles_dirty.is_set()):
             obstacles_lock.acquire()
             my_obstacles = obstacles
-            obstacles_dirty = False
+            obstacles_dirty.clear()
             obstacles_lock.release()
-            new_data = True
-        if (targets_dirty):
+
+        if (targets_dirty.is_set()):
             targets_lock.acquire()
             my_targets = targets
-            targets_dirty = False
+            targets_dirty.clear()
             targets_lock.release()
-            new_data = True
-        if (state_coordinate_dirty):
+
+        if (state_coordinate_dirty.is_set()):
             state_coordinate_lock.acquire()
             my_state_coordinate = state_coordinate
-            state_coordinate_dirty = False
+            state_coordinate_dirty.clear()
             state_coordinate_lock.release()
-            new_data = True
-        if (state_color_dirty):
+
+        if (state_color_dirty.is_set()):
             state_color_lock.acquire()
             my_state_color = state_color
-            state_color_dirty = False
+            state_color_dirty.clear()
             state_color_lock.release()
-            new_data = True
 
         # operate on new data if it exists and make it available to the Agent
-        if (new_data):
-            my_waypoints = Planning.main(my_state_coordinate, my_state_color, my_obstacles, my_targets)
-            waypoints_lock.acquire()
-            waypoints = my_waypoints
-            waypoints_dirty = True
-            waypoints_lock.release()
-            
-            new_data = False
-        else:
-            time.sleep(0.001)
+        my_waypoints = Planning.main(my_state_coordinate, my_state_color, my_obstacles, my_targets)
+        
+        waypoints_lock.acquire()
+        waypoints = my_waypoints
+        waypoints_dirty = True
+        waypoints_lock.release()
 
 # out to: list of waypoints
 # in from: motor speed
-
 def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
                   motor_speed_lock, motor_speed_dirty, motor_speed):
  
     mc = MotorController(5, 10.0, 0.1, 3)
-    my_waypoints = None   
+    my_waypoints = None
     
     while True:
-        if (waypoints_dirty):
-            # acquire and save dirty waypoints, then update the dirty bit
-            waypoints_lock.acquire()
-            my_waypoints = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
-            waypoints_dirty = False
-            waypoints_lock.release()
+        waypoints_dirty.wait()
+        # acquire and save dirty waypoints, then update the dirty bit
+        waypoints_lock.acquire()
+        my_waypoints = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
+        waypoints_dirty.clear()
+        waypoints_lock.release()
 
-            # do work
-            mc.run(my_waypoints)
-            
-            # acqure and write new speed
-            motor_speed_lock.acquire()
-            motor_speed = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
-            motor_speed_dirty = True
-            motor_speed_lock.release()
-        else:
-            time.sleep(0.001)
+        # do work
+        mc.run(my_waypoints)
+        
+        # acqure and write new speed
+        motor_speed_lock.acquire()
+        motor_speed = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
+        motor_speed_dirty = True
+        motor_speed_lock.release()
 
 if __name__ == '__main__':
 
@@ -192,10 +210,10 @@ if __name__ == '__main__':
     motor_control_proc = Thread(target=motor_control, args=((waypoints_public_lock),(waypoints_public_dirty),(public_waypoints), \
                                                             (motor_speed_private_lock),(motor_speed_private_dirty),(private_motor_speed),))
 
-    vision_proc.daemon = True
-    localization_proc.daemon = True
-    path_planning_proc.daemon = True
-    motor_control_proc.daemon = True
+    vision_proc.setDaemon(True)
+    localization_proc.setDaemon(True)
+    path_planning_proc.setDaemon(True)
+    motor_control_proc.setDaemon(True)
 
     vision_proc.start()
     localization_proc.start()
@@ -250,5 +268,6 @@ if __name__ == '__main__':
             if (agent_dirty[i]):
                 public_locks[i].acquire_write()
                 public_data[i] = agent_data[i]
+                public_dirty[i].set()
                 agent_dirty[i] = False
                 public_locks[i].release_write()

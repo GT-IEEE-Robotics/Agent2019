@@ -4,7 +4,7 @@ Decision making part of path planning implemented with priority queue
 import queue
 import sys
 import re
-from frenet import frenet
+from PathPlanning.frenet import frenet
 
 Round = 1
 numOfObjects = 12

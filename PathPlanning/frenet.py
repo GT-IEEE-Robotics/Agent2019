@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import math
-import cubic
+import PathPlanning.cubic
 
 SIM_LOOP = 500
 

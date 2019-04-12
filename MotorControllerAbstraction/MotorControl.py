@@ -1,6 +1,6 @@
 import numpy as np
 import math
-import Point
+import MotorControllerAbstraction.Point
 
 class Spline:
     def __init__(self, n, begin):
