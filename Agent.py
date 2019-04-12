@@ -137,7 +137,6 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
             my_obstacles = obstacles
             obstacles_dirty.clear()
             obstacles_lock.release()
-
         if (targets_dirty.is_set()):
             targets_lock.acquire()
             my_targets = targets

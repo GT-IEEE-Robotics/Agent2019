@@ -1,6 +1,23 @@
 import numpy as np
 import math
-import MotorControllerAbstraction.Point
+
+#
+class Point:
+    def __init__(self, x_temp, y_temp):
+        self.x = float(x_temp)
+        self.y = float(y_temp)
+    def getX(self):
+        return float(self.x)
+    def getY(self):
+        return float(self.y)
+    def getDistance(self, two):
+        return float(math.sqrt((two.getX() - self.x)**2 + ((two.getY() - self.y)**2)))
+    def getTheta(self, two):
+        return math.atan((two.getY() - self.y)/(two.getX() - self.x))
+
+
+
+
 
 class Spline:
     def __init__(self, n, begin):
@@ -207,7 +224,7 @@ class Trajectory:
 #subsection: number of points from spline wanted to sample for path, type double
 
 #constantVelocity: max velocity that the robot should go over subsection, type double
-#                  
+#
 #endRatio: determines when to slow down robot over path
 #       Ex. To slow robot down for last tenth of subsection, endRatio = .1
 
@@ -237,7 +254,6 @@ class MotorController:
 
         xValues = [coordinates[0].getX()]
         yValues = [coordinates[0].getY()]
-
         self.speeds = [[0, 0]]
 
         self.times = [0]
@@ -265,8 +281,8 @@ class MotorController:
             for j in range(0, len(subPoints)):
                 ratio = 1
                 tempDistance = subPoints[j].getDistance(endPoint)
-                if (tempDistance < endDistance):
-                    ratio = tempDistance/endDistance
+                if (tempDistance < self.endDistance):
+                    ratio = tempDistance/self.endDistance
                 x = subPoints[j].getX()
                 y = subPoints[j].getY()
                 trajectory.getNextPoint(x, y)
@@ -285,8 +301,13 @@ class MotorController:
                 # wheelSpeeds = trajectory.getWheelSpeed()
                 wheelSpeeds = [0, 0]
                 theta_ratio = abs(trajectory.getTheta()) / (math.pi / 2)
-                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.wheelbase*trajectory.getTheta())/2
-                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.wheelbase*trajectory.getTheta())/2
+                if (theta_ratio < .4):
+                    theta_ratio = .4
+                if (theta_ratio > 1):
+                    theta_ratio = 1
+                print(theta_ratio)
+                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - l_wheelbase*trajectory.getTheta())/2
+                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + l_wheelbase*trajectory.getTheta())/2
 
                 avg_v = (wheelSpeeds[0] + wheelSpeeds[1]) / 2
                 if (avg_v != 0):
@@ -338,22 +359,22 @@ class MotorController:
 
 
 # Tester class!!!
-# def main():
-#     p = Point(0,0)
-#     test = [
-#         Point(0.0, 5.0),
-#         Point(1.0, 4.0),
-#         Point(5.0, 6.0),
-#         Point(7.0, 10.5),
-#         Point(8.0, 11.0),
-#         Point(9.0, 8.9),
-#         Point(11.0, 14.6),
-#         Point(15.0, 10.8),
-#         Point(17.0, 17.0),
-#         Point(18.0, 12.1)
-#     ]
-#     vel = Velocity(test, 5, 10.0, .1, 3)
-#     print("here!")
+def main():
+    p = Point(0,0)
+    test = [
+        Point(0.0, 5.0),
+        Point(1.0, 4.0),
+        Point(5.0, 6.0),
+        Point(7.0, 10.5),
+        Point(8.0, 11.0),
+        Point(9.0, 8.9),
+        Point(11.0, 14.6),
+        Point(15.0, 10.8),
+        Point(17.0, 17.0),
+        Point(18.0, 12.1)
+    ]
+    vel = Velocity(test, 5, 10.0, .1, 3)
+    print("here!")
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
