@@ -16,6 +16,7 @@ from StarveSafeReadWriteLock import StarveSafeReadWriteLock
 from MotorControllerAbstraction.MotorControl import MotorController
 import PathPlanning.Planning
 import OrEvent
+from MotorControllerAbstraction.Point import Point
 
 # index to data map
 # state coordinate - our location
@@ -23,7 +24,7 @@ names_map = ['waypoints', 'motor speed', 'state coordinate', 'state color', 'obs
 
 # starve safe locks
 waypoints_public_lock = StarveSafeReadWriteLock()
-public_waypoints = None
+public_waypoints = []
 waypoints_public_dirty = Event()
 
 motor_offset_public_lock = StarveSafeReadWriteLock()
@@ -170,7 +171,7 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
                   motor_offset_lock, motor_offset_dirty, motor_offset):
  
     mc = MotorController(5, 10.0, 0.1, 3)
-    my_waypoints = None
+    my_waypoints = []
     
     while True:
         waypoints_dirty.wait()
@@ -182,11 +183,10 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
 
         # do work
         mc.run(my_waypoints)
-        
         # acqure and write new speed
         motor_offset_lock.acquire()
         motor_offset = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
-        motor_offset_dirty = True
+        #motor_offset_dirty = True
         motor_offset_lock.release()
 
 if __name__ == '__main__':
@@ -262,12 +262,37 @@ if __name__ == '__main__':
             if (agent_dirty[i]):
                 pass
                 #do whatever - use switch statement to determine what to do
+
+        agent_data[0] = [
+            Point(0.0, 5.0),
+            Point(1.0, 4.0),
+            Point(5.0, 6.0),
+            Point(7.0, 10.5),
+            Point(8.0, 11.0),
+            Point(9.0, 8.9),
+            Point(11.0, 14.6),
+            Point(15.0, 10.8),
+            Point(17.0, 17.0),
+            Point(18.0, 12.1)
+        ]
+
+        agent_dirty[0] = True
         
         # post data to public
         for i in range(num_data_vectors):
             if (agent_dirty[i]):
                 public_locks[i].acquire_write()
-                public_data[i] = agent_data[i]
+
+                # do this for passing a list of waypoints
+                if (i == 0):
+                    for item in public_data[i]:
+                        public_data[i].pop(0)
+
+                    for item in agent_data[i]:
+                        public_data[i].append(item)
+                else:
+                    public_data[i] = agent_data[i]
+
+                public_locks[i].release_write()
                 public_dirty[i].set()
                 agent_dirty[i] = False
-                public_locks[i].release_write()
