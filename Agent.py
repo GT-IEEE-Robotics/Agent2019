@@ -13,10 +13,10 @@ from threading import Thread, Lock, Event
 import time
 
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
-from MotorControllerAbstraction.MotorControl import MotorController
+from MotorControllerAbstraction.MotorControl import MotorController, Point
 import PathPlanning.Planning
 import OrEvent
-from MotorControllerAbstraction.Point import Point
+import numpy as np
 
 # index to data map
 # state coordinate - our location
@@ -170,7 +170,7 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
 def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
                   motor_offset_lock, motor_offset_dirty, motor_offset):
  
-    mc = MotorController(5, 10.0, 0.1, 3)
+    mc = MotorController(5, 5.0, 0.1, 3)
     my_waypoints = []
     
     while True:
@@ -182,9 +182,18 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
         waypoints_lock.release()
 
         # do work
+        print("waypoints")
+        for waypoint in my_waypoints:
+            print(waypoint.getString())
+
         mc.run(my_waypoints)
-        motor_speeds = mc.getSpeeds()
-        print(motor_speeds)
+        print("speed")
+        speeds = mc.getSpeeds()
+        xVals = mc.getXVals()
+        for i in range(0, len(speeds)):
+            print("%f, %f, %f"%(speeds[i][0], speeds[i][1], xVals[i]))
+
+        time.sleep(1000)
         
         # acqure and write new speed
         motor_offset_lock.acquire()
@@ -266,19 +275,13 @@ if __name__ == '__main__':
                 pass
                 #do whatever - use switch statement to determine what to do
 
-        agent_data[0] = [
-            Point(0.0, 5.0),
-            Point(1.0, 4.0),
-            Point(5.0, 6.0),
-            Point(7.0, 10.5),
-            Point(8.0, 11.0),
-            Point(9.0, 8.9),
-            Point(11.0, 14.6),
-            Point(15.0, 10.8),
-            Point(17.0, 17.0),
-            Point(18.0, 12.1)
-        ]
+        x_data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        y_data = [10.02, 10.04, 10.08, 10.16, 10.32, 10.64, 11.28, 12.56, 15.12, 20.24]
+        test_points = []
+        for i in range(len(x_data)):
+            test_points.append(Point(x_data[i], y_data[i]))
 
+        agent_data[0] = test_points
         agent_dirty[0] = True
         
         # post data to public

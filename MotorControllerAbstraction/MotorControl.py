@@ -1,7 +1,6 @@
 import numpy as np
 import math
 
-#
 class Point:
     def __init__(self, x_temp, y_temp):
         self.x = float(x_temp)
@@ -14,10 +13,8 @@ class Point:
         return float(math.sqrt((two.getX() - self.x)**2 + ((two.getY() - self.y)**2)))
     def getTheta(self, two):
         return math.atan((two.getY() - self.y)/(two.getX() - self.x))
-
-
-
-
+    def getString(self):
+        return "Point(x=" + str(self.x) + ", y=" + str(self.y) + ")"
 
 class Spline:
     def __init__(self, n, begin):
@@ -116,11 +113,6 @@ class Spline:
                 j = j + step
 
         return fullSet
-
-
-
-
-
 
 
 
@@ -248,13 +240,12 @@ class MotorController:
         self.times = None
 
     def run(self, coordinates):
-        theta_gen = math.atan((coordinates[len(coordinates) - 1].getY() - coordinates[0].getY())/(coordinates[len(coordinates) - 1].getX() - coordinates[0].getX()))
-
+        theta_prev = 0.0
         lastRatio = len(coordinates)*20.0*self.endRatio
         trajectory = Trajectory(coordinates[0].getX(), coordinates[0].getY(), 0, 5.0, 10.0, 1)
         i = 0
 
-        xValues = [coordinates[0].getX()]
+        self.xValues = [coordinates[0].getX()]
         yValues = [coordinates[0].getY()]
         self.speeds = []
 
@@ -282,22 +273,19 @@ class MotorController:
 
             for j in range(0, len(subPoints)):
                 ratio = 1
-                tempDistance = subPoints[j].getDistance(endPoint)
-                if (tempDistance < endDistance):
-<<<<<<< HEAD
-                    ratio = tempDistance / endDistance
+                # tempDistance = subPoints[j].getDistance(endPoint)
+                # if (tempDistance < endDistance):
+                #     ratio = tempDistance / endDistance
                 
+                # print(endPoint.getString())
                 # print(ratio)
-=======
-                    ratio = tempDistance/endDistance
->>>>>>> 515b499de432f7c12a7c92ab4f8c7a4d595b05fa
                 x = subPoints[j].getX()
                 y = subPoints[j].getY()
                 trajectory.getNextPoint(x, y)
 
                 delta_d = subPoints[j].getDistance(prev)
 
-                xValues.append(float(x))
+                self.xValues.append(float(x))
                 yValues.append(float(y))
                 # trajectory.setLinVel()
                 # trajectory.setThetaArr()
@@ -308,19 +296,14 @@ class MotorController:
                 # trajectory.getRatio()
                 # wheelSpeeds = trajectory.getWheelSpeed()
                 wheelSpeeds = [0, 0]
-                theta_ratio = 1 - (abs(trajectory.getTheta()) - theta_gen) / theta_gen
+                theta_ratio = 1 - (abs(trajectory.getTheta()) - theta_prev) / math.pi
                 if (theta_ratio < .4):
                     theta_ratio = .4
                 if (theta_ratio > 1):
                     theta_ratio = 1
-                print(theta_ratio)
-<<<<<<< HEAD
-                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.l_wheelbase*trajectory.getTheta())/2
-                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.l_wheelbase*trajectory.getTheta())/2
-=======
-                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.wheelbase*trajectory.getTheta())/2
-                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.wheelbase*trajectory.getTheta())/2
->>>>>>> 515b499de432f7c12a7c92ab4f8c7a4d595b05fa
+                # print(theta_ratio)
+                wheelSpeeds[0] = theta_ratio*(2*self.constantVelocity - self.l_wheelbase*trajectory.getTheta())/2
+                wheelSpeeds[1] = theta_ratio*(2*self.constantVelocity + self.l_wheelbase*trajectory.getTheta())/2
 
                 avg_v = (wheelSpeeds[0] + wheelSpeeds[1]) / 2
                 if (avg_v != 0):
@@ -331,12 +314,13 @@ class MotorController:
                 self.speeds.append([wheelSpeeds[0], wheelSpeeds[1]])
 
                 prev = subPoints[j]
+                theta_prev = trajectory.getTheta()
 
             i += self.subsection - 1
 
-            lastX = xValues[len(xValues) - 1]
+            lastX = self.xValues[len(self.xValues) - 1]
             lastY = yValues[len(yValues) - 1]
-            secondLastX = xValues[len(xValues) - 5]
+            secondLastX = self.xValues[len(self.xValues) - 5]
             secondLastY = yValues[len(yValues) - 5]
             deriv = (lastY - secondLastY)/(lastX - secondLastX)
 
@@ -348,6 +332,10 @@ class MotorController:
 
     def getTimes(self):
         return self.times
+
+    def getXVals(self):
+        return self.xValues
+    
 
 
 
@@ -388,7 +376,9 @@ def main():
     
     print("speed")
     speeds = mc.getSpeeds()
-    print(np.matrix(speeds))
+    xVals = mc.getXVals()
+    for i in range(0, len(speeds)):
+        print("%f, %f, %f"%(speeds[i][0], speeds[i][1], xVals[i]))
 
     # p = Point(0,0)
     # test = [
