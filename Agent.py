@@ -13,11 +13,13 @@ from threading import Thread, Lock, Event
 import time
 import copy
 import numpy as np
+import math
 
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
 from MotorControllerAbstraction.MotorControl import MotorController, Point
 import PathPlanning.Planning
 import OrEvent
+from GateFanControl import GateFanController
 
 # index to data map
 # state coordinate - our location
@@ -29,23 +31,23 @@ public_waypoints = []
 waypoints_public_dirty = Event()
 
 motor_offset_public_lock = StarveSafeReadWriteLock()
-public_motor_offset = None
+public_motor_offset = 0
 motor_offset_public_dirty = Event()
 
 state_coordinate_public_lock = StarveSafeReadWriteLock()
-public_state_coordinate = None
+public_state_coordinate = Point(0, 0)
 state_coordinate_public_dirty = Event()
 
 state_color_public_lock = StarveSafeReadWriteLock()
-public_state_color = None
+public_state_color = ''
 state_color_public_dirty = Event()
 
 obstacles_public_lock = StarveSafeReadWriteLock() #location, objects to avoid
-public_obstacles = None
+public_obstacles = []
 obstacles_public_dirty = Event()
 
 targets_public_lock = StarveSafeReadWriteLock()
-public_targets = None
+public_targets = []
 targets_public_dirty = Event()
 
 public_locks = [waypoints_public_lock, motor_offset_public_lock, state_coordinate_public_lock, state_color_public_lock, obstacles_public_lock, targets_public_lock]
@@ -55,7 +57,7 @@ public_dirty = [waypoints_public_dirty, motor_offset_public_dirty, state_coordin
 
 # agent-to-system normal locks and their respective dirty bits
 waypoints_private_lock = Lock()
-private_waypoints = None
+private_waypoints = []
 waypoints_private_dirty = False
 
 motor_offset_private_lock = Lock()
@@ -63,24 +65,37 @@ private_motor_offset = 0
 motor_offset_private_dirty = False
 
 state_coordinate_private_lock = Lock()
-private_state_coordinate = None
+private_state_coordinate = Point(0, 0)
 state_coordinate_private_dirty = False
 
 state_color_private_lock = Lock()
-private_state_color = None
+private_state_color = ''
 state_color_private_dirty = False
 
 obstacles_private_lock = Lock()
-private_obstacles = None
+private_obstacles = []
 obstacles_private_dirty = False
 
 targets_private_lock = Lock()
-private_targets = None
+private_targets = []
 targets_private_dirty = False
 
 private_locks = [waypoints_private_lock, motor_offset_private_lock, state_coordinate_private_lock, state_color_private_lock, obstacles_private_lock, targets_private_lock]
 private_data = [private_waypoints, private_motor_offset, private_state_coordinate, private_state_color, private_obstacles, private_targets]
 private_dirty = [waypoints_private_dirty, motor_offset_private_dirty, state_coordinate_private_dirty, state_color_private_dirty, obstacles_private_dirty, targets_private_dirty]
+
+# ferris wheel stuff
+gate_fan_control = GateFanController()
+current_goal = PathPlanning.Planning.Goal('red', location=Point(100, 100))
+object_to_pick_up = None
+
+close_gate_timer = 0
+picking_up = False
+
+wheel_contents = [None, None, None, None]
+
+#extra path planning stuff
+origin = '' # needs to be the color we start in
 
 # in from: list of tuples representing objects, etc.
 def vision(obstacles_lock, obstacles_dirty, obstacles, \
@@ -118,7 +133,8 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
                 targets_lock, targets_dirty, targets, \
                 state_coordinate_lock, state_coordinate_dirty, state_coordinate, \
                 state_color_lock, state_color_dirty, state_color, \
-                waypoints_lock, waypoints_dirty, waypoints):
+                waypoints_lock, waypoints_dirty, waypoints, \
+                wheel_contents, current_goal):
 
     my_obstacles = None
     my_targets = None
@@ -136,34 +152,43 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
         # collect any new data
         if (obstacles_dirty.is_set()):
             obstacles_lock.acquire()
-            my_obstacles = obstacles
+            my_obstacles = copy.deepcopy(obstacles)
             obstacles_dirty.clear()
             obstacles_lock.release()
 
         if (targets_dirty.is_set()):
             targets_lock.acquire()
-            my_targets = targets
+            my_targets = copy.deepcopy(targets)
             targets_dirty.clear()
             targets_lock.release()
 
         if (state_coordinate_dirty.is_set()):
             state_coordinate_lock.acquire()
-            my_state_coordinate = state_coordinate
+            my_state_coordinate = copy.deepcopy(state_coordinate)
             state_coordinate_dirty.clear()
             state_coordinate_lock.release()
 
         if (state_color_dirty.is_set()):
             state_color_lock.acquire()
-            my_state_color = state_color
+            my_state_color = copy.deepcopy(state_color)
             state_color_dirty.clear()
             state_color_lock.release()
 
         # operate on new data if it exists and make it available to the Agent
-        my_waypoints = Planning.main(my_state_coordinate, my_state_color, my_obstacles, my_targets)
+        output_tuple = Planning.main(origin, my_state_coordinate, my_state_color, my_targets, my_obstacles, wheel_contents)
         
+
         waypoints_lock.acquire()
-        waypoints = my_waypoints
+        waypoints.clear()
+        for point in output_tuple[0]:
+            waypoints.append(point)
         waypoints_dirty = True
+
+        current_goal.color = output_tuple[1].color
+        current_goal.location = output_tuple[1].location
+        current_goal.priority = output_tuple[1].priority
+        current_goal.pickup = output_tuple[1].pickup
+
         waypoints_lock.release()
 
 # out to: list of waypoints
@@ -173,32 +198,33 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
  
     mc = MotorController(5, 5.0, 0.1, 3)
     my_waypoints = []
+
+    ser = Serial('/dev/cu.usbmodem3642861', 9600)  # open serial port
     
     while True:
         waypoints_dirty.wait()
         # acquire and save dirty waypoints, then update the dirty bit
         waypoints_lock.acquire()
-        my_waypoints = copy.deepcopy(waypoints) # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
+        my_waypoints = copy.deepcopy(waypoints)
         waypoints_dirty.clear()
         waypoints_lock.release()
 
         # do work
-        print("waypoints")
-        for waypoint in my_waypoints:
-            print(waypoint.getString())
         mc.run(my_waypoints)
-        print("speed")
         speeds = mc.getSpeeds()
-        xVals = mc.getXVals()
+        times = mc.getTimes()
+
         for i in range(0, len(speeds)):
-            print("%f, %f, %f"%(speeds[i][0], speeds[i][1], xVals[i]))
-        time.sleep(1000)
+            ser.write(struct.pack('ff', speeds[i][0], speeds[i][1]))
+            time.sleep(times[i] - .0005)
+            if (waypoints_dirty.is_set()):
+                break
         
         # acqure and write new speed
-        motor_offset_lock.acquire()
-        # motor_offset = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
-        motor_offset_dirty = True
-        motor_offset_lock.release()
+        # motor_offset_lock.acquire()
+        # motor_offset_dirty = True
+        # motor_offset_lock.release()
+    ser.close() # TODO put this where it will actually get called
 
 if __name__ == '__main__':
 
@@ -216,7 +242,8 @@ if __name__ == '__main__':
                                                         (targets_public_lock),(targets_public_dirty),(public_targets), \
                                                         (state_coordinate_public_lock),(state_coordinate_public_dirty),(public_state_coordinate), \
                                                         (state_color_public_lock),(state_color_public_dirty),(public_state_color), \
-                                                        (waypoints_private_lock),(waypoints_private_dirty),(private_waypoints),))
+                                                        (waypoints_private_lock),(waypoints_private_dirty),(private_waypoints), \
+                                                        (wheel_contents),(current_goal),))
     
     motor_control_proc = Thread(target=motor_control, args=((waypoints_public_lock),(waypoints_public_dirty),(public_waypoints), \
                                                             (motor_offset_private_lock),(motor_offset_private_dirty),(private_motor_offset),))
@@ -231,21 +258,18 @@ if __name__ == '__main__':
     path_planning_proc.start()
     motor_control_proc.start()
 
-    # main loop
-    # acquire, modify, post data
-
     # loop copies of locked data
-    agent_waypoints = None
+    agent_waypoints = []
     agent_waypoints_dirty = False
     agent_motor_offset = 0
     agent_motor_offset_dirty = False
-    agent_state_coordinate = None
+    agent_state_coordinate = Point(0,0)
     agent_state_coordinate_dirty = False
-    agent_state_color = None
+    agent_state_color = ''
     agent_state_color_dirty = False
-    agent_obstacles = None
+    agent_obstacles = []
     agent_obstacles_dirty = False
-    agent_targets = None
+    agent_targets = []
     agent_targets_dirty = False
 
     agent_data = [agent_waypoints, agent_motor_offset, agent_state_coordinate, agent_state_color, agent_obstacles, agent_targets]
@@ -256,6 +280,8 @@ if __name__ == '__main__':
 
     print("Done... Shaken not stirred\n")
 
+    # main loop
+    # acquire, modify, post data
     while(True):
         # grab all dirty data from local locks
         # TODO - we assume we can read the dirty bit without it being corrupt (it doesn't matter that much though)
@@ -274,14 +300,35 @@ if __name__ == '__main__':
                 pass
                 #do whatever - use switch statement to determine what to do
 
-        x_data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        y_data = [10.02, 10.04, 10.08, 10.16, 10.32, 10.64, 11.28, 12.56, 15.12, 20.24]
-        test_points = []
-        for i in range(len(x_data)):
-            test_points.append(Point(x_data[i], y_data[i]))
+       
+        # if motors report gate is closed/theres been enough time
+        if (gate_fan_control.is_gate_open and ((time.time() - close_gate_timer) > 5)):
+            gate_fan_control.close_gate()
+            if (picking_up):
+                gate_fan_control.store_object(object_to_pick_up)
+            else:
+                gate_fan_control.release_object(object_to_pick_up)
 
-        agent_data[0] = test_points
-        agent_dirty[0] = True
+            # update our copy of stored objects
+            for i in range(4):
+                wheel_contents[i] = gate_fan_control.store_objects[i]
+
+        # check if we need to open the gate - TODO pick an actual threshold, also make this async
+        if ((not current_goal is None) and current_goal.pickup):
+            if (not gate_fan_control.is_gate_open and (math.sqrt(pow(agent_state_coordinate.getX() - current_goal.location.getX(), 2) + pow(agent_state_coordinate.getY() - current_goal.location.getY(), 2)) < 1)):
+                gate_fan_control.rotate_to_empty_quadrant()
+                gate_fan_control.open_gate()
+                close_gate_timer = time.time()
+
+                object_to_pick_up = copy.deepcopy(current_goal)
+                picking_up = True
+        else:
+            if (not gate_fan_control.is_gate_open and (math.sqrt(pow(agent_state_coordinate.getX() - current_goal.location.getX(), 2) + pow(agent_state_coordinate.getY() - current_goal.location.getY(), 2)) < 1)):
+                gate_fan_control.rotate_to_color(current_goal.color)
+                gate_fan_control.open_gate()
+                close_gate_timer = time.time()
+
+                picking_up = False
 
         # post data to public
         for i in range(num_data_vectors):
