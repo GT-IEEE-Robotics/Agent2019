@@ -11,12 +11,13 @@
 
 from threading import Thread, Lock, Event
 import time
+import copy
+import numpy as np
 
 from StarveSafeReadWriteLock import StarveSafeReadWriteLock
 from MotorControllerAbstraction.MotorControl import MotorController, Point
 import PathPlanning.Planning
 import OrEvent
-import numpy as np
 
 # index to data map
 # state coordinate - our location
@@ -177,7 +178,7 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
         waypoints_dirty.wait()
         # acquire and save dirty waypoints, then update the dirty bit
         waypoints_lock.acquire()
-        my_waypoints = waypoints # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
+        my_waypoints = copy.deepcopy(waypoints) # TODO - This is really important!!!!! Convert waypoints into a list of Point objects - do this in agent loop?
         waypoints_dirty.clear()
         waypoints_lock.release()
 
@@ -185,14 +186,12 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
         print("waypoints")
         for waypoint in my_waypoints:
             print(waypoint.getString())
-
         mc.run(my_waypoints)
         print("speed")
         speeds = mc.getSpeeds()
         xVals = mc.getXVals()
         for i in range(0, len(speeds)):
             print("%f, %f, %f"%(speeds[i][0], speeds[i][1], xVals[i]))
-
         time.sleep(1000)
         
         # acqure and write new speed
@@ -283,7 +282,7 @@ if __name__ == '__main__':
 
         agent_data[0] = test_points
         agent_dirty[0] = True
-        
+
         # post data to public
         for i in range(num_data_vectors):
             if (agent_dirty[i]):
@@ -291,14 +290,13 @@ if __name__ == '__main__':
 
                 # do this for passing a list of waypoints
                 if (i == 0):
-                    for item in public_data[i]:
-                        public_data[i].pop(0)
+                    public_data[i].clear()
 
                     for item in agent_data[i]:
                         public_data[i].append(item)
                 else:
                     public_data[i] = agent_data[i]
-
                 public_locks[i].release_write()
+
                 public_dirty[i].set()
                 agent_dirty[i] = False

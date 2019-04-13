@@ -367,6 +367,9 @@ def main():
     for i in range(len(x_data)):
         test_points.append(Point(x_data[i], y_data[i]))
 
+    for waypoint in test_points:
+        print(waypoint.getString())
+
     mc = MotorController(5, 5.0, 0.1, 3)
     mc.run(test_points)
     
