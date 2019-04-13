@@ -284,9 +284,13 @@ class MotorController:
                 ratio = 1
                 tempDistance = subPoints[j].getDistance(endPoint)
                 if (tempDistance < endDistance):
+<<<<<<< HEAD
                     ratio = tempDistance / endDistance
                 
                 # print(ratio)
+=======
+                    ratio = tempDistance/endDistance
+>>>>>>> 515b499de432f7c12a7c92ab4f8c7a4d595b05fa
                 x = subPoints[j].getX()
                 y = subPoints[j].getY()
                 trajectory.getNextPoint(x, y)
@@ -310,8 +314,13 @@ class MotorController:
                 if (theta_ratio > 1):
                     theta_ratio = 1
                 print(theta_ratio)
+<<<<<<< HEAD
                 wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.l_wheelbase*trajectory.getTheta())/2
                 wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.l_wheelbase*trajectory.getTheta())/2
+=======
+                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.wheelbase*trajectory.getTheta())/2
+                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.wheelbase*trajectory.getTheta())/2
+>>>>>>> 515b499de432f7c12a7c92ab4f8c7a4d595b05fa
 
                 avg_v = (wheelSpeeds[0] + wheelSpeeds[1]) / 2
                 if (avg_v != 0):
