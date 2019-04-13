@@ -238,23 +238,25 @@ class Trajectory:
 
 
 class MotorController:
-    def __init__(self, subsection, constantVelocity, endRatio, wheelbase):
+    def __init__(self, subsection, constantVelocity, endRatio, l_wheelbase):
         self.subsection = subsection
         self.constantVelocity = constantVelocity
         self.endRatio = endRatio
-        self.wheelbase = wheelbase
+        self.l_wheelbase = l_wheelbase
 
         self.speeds = None
         self.times = None
 
     def run(self, coordinates):
+        theta_gen = math.atan((coordinates[len(coordinates) - 1].getY() - coordinates[0].getY())/(coordinates[len(coordinates) - 1].getX() - coordinates[0].getX()))
+
         lastRatio = len(coordinates)*20.0*self.endRatio
         trajectory = Trajectory(coordinates[0].getX(), coordinates[0].getY(), 0, 5.0, 10.0, 1)
         i = 0
 
         xValues = [coordinates[0].getX()]
         yValues = [coordinates[0].getY()]
-        self.speeds = [[0, 0]]
+        self.speeds = []
 
         self.times = [0]
 
@@ -281,8 +283,10 @@ class MotorController:
             for j in range(0, len(subPoints)):
                 ratio = 1
                 tempDistance = subPoints[j].getDistance(endPoint)
-                if (tempDistance < self.endDistance):
-                    ratio = tempDistance/self.endDistance
+                if (tempDistance < endDistance):
+                    ratio = tempDistance / endDistance
+                
+                # print(ratio)
                 x = subPoints[j].getX()
                 y = subPoints[j].getY()
                 trajectory.getNextPoint(x, y)
@@ -300,14 +304,14 @@ class MotorController:
                 # trajectory.getRatio()
                 # wheelSpeeds = trajectory.getWheelSpeed()
                 wheelSpeeds = [0, 0]
-                theta_ratio = abs(trajectory.getTheta()) / (math.pi / 2)
+                theta_ratio = 1 - (abs(trajectory.getTheta()) - theta_gen) / theta_gen
                 if (theta_ratio < .4):
                     theta_ratio = .4
                 if (theta_ratio > 1):
                     theta_ratio = 1
                 print(theta_ratio)
-                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - l_wheelbase*trajectory.getTheta())/2
-                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + l_wheelbase*trajectory.getTheta())/2
+                wheelSpeeds[0] = theta_ratio*ratio*(2*self.constantVelocity - self.l_wheelbase*trajectory.getTheta())/2
+                wheelSpeeds[1] = theta_ratio*ratio*(2*self.constantVelocity + self.l_wheelbase*trajectory.getTheta())/2
 
                 avg_v = (wheelSpeeds[0] + wheelSpeeds[1]) / 2
                 if (avg_v != 0):
@@ -360,20 +364,37 @@ class MotorController:
 
 # Tester class!!!
 def main():
-    p = Point(0,0)
-    test = [
-        Point(0.0, 5.0),
-        Point(1.0, 4.0),
-        Point(5.0, 6.0),
-        Point(7.0, 10.5),
-        Point(8.0, 11.0),
-        Point(9.0, 8.9),
-        Point(11.0, 14.6),
-        Point(15.0, 10.8),
-        Point(17.0, 17.0),
-        Point(18.0, 12.1)
-    ]
-    vel = Velocity(test, 5, 10.0, .1, 3)
+    x_data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    y_data = [10.02, 10.04, 10.08, 10.16, 10.32, 10.64, 11.28, 12.56, 15.12, 20.24]
+    test_points = []
+    for i in range(len(x_data)):
+        test_points.append(Point(x_data[i], y_data[i]))
+
+    mc = MotorController(5, 5.0, 0.1, 3)
+    mc.run(test_points)
+    
+    print("times")
+    times = mc.getTimes()
+    print(np.matrix(times))
+    
+    print("speed")
+    speeds = mc.getSpeeds()
+    print(np.matrix(speeds))
+
+    # p = Point(0,0)
+    # test = [
+    #     Point(0.0, 5.0),
+    #     Point(1.0, 4.0),
+    #     Point(5.0, 6.0),
+    #     Point(7.0, 10.5),
+    #     Point(8.0, 11.0),
+    #     Point(9.0, 8.9),
+    #     Point(11.0, 14.6),
+    #     Point(15.0, 10.8),
+    #     Point(17.0, 17.0),
+    #     Point(18.0, 12.1)
+    # ]
+    # vel = Velocity(test, 5, 10.0, .1, 3)
     print("here!")
 
 if __name__ == "__main__":

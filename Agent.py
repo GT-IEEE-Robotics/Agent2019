@@ -182,10 +182,12 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
 
         # do work
         mc.run(my_waypoints)
+        motor_speeds = mc.getSpeeds()
+        print(motor_speeds)
         
         # acqure and write new speed
         motor_offset_lock.acquire()
-        motor_offset = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
+        # motor_offset = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
         motor_offset_dirty = True
         motor_offset_lock.release()
 
