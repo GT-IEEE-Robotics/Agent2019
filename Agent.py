@@ -26,9 +26,9 @@ waypoints_public_lock = StarveSafeReadWriteLock()
 public_waypoints = None
 waypoints_public_dirty = Event()
 
-motor_speed_public_lock = StarveSafeReadWriteLock()
-public_motor_speed = None
-motor_speed_public_dirty = Event()
+motor_offset_public_lock = StarveSafeReadWriteLock()
+public_motor_offset = None
+motor_offset_public_dirty = Event()
 
 state_coordinate_public_lock = StarveSafeReadWriteLock()
 public_state_coordinate = None
@@ -46,19 +46,19 @@ targets_public_lock = StarveSafeReadWriteLock()
 public_targets = None
 targets_public_dirty = Event()
 
-public_locks = [waypoints_public_lock, motor_speed_public_lock, state_coordinate_public_lock, state_color_public_lock, obstacles_public_lock, targets_public_lock]
-public_data = [public_waypoints, public_motor_speed, public_state_coordinate, public_state_color, public_obstacles, public_targets]
+public_locks = [waypoints_public_lock, motor_offset_public_lock, state_coordinate_public_lock, state_color_public_lock, obstacles_public_lock, targets_public_lock]
+public_data = [public_waypoints, public_motor_offset, public_state_coordinate, public_state_color, public_obstacles, public_targets]
 # TODO - make sure there aren't any collisions with this dirty bit - could result in a system not getting new data if another one reads the same data before it
-public_dirty = [waypoints_public_dirty, motor_speed_public_dirty, state_coordinate_public_dirty, state_color_public_dirty, obstacles_public_dirty, targets_public_dirty]
+public_dirty = [waypoints_public_dirty, motor_offset_public_dirty, state_coordinate_public_dirty, state_color_public_dirty, obstacles_public_dirty, targets_public_dirty]
 
 # agent-to-system normal locks and their respective dirty bits
 waypoints_private_lock = Lock()
 private_waypoints = None
 waypoints_private_dirty = False
 
-motor_speed_private_lock = Lock()
-private_motor_speed = 0
-motor_speed_private_dirty = False
+motor_offset_private_lock = Lock()
+private_motor_offset = 0
+motor_offset_private_dirty = False
 
 state_coordinate_private_lock = Lock()
 private_state_coordinate = None
@@ -76,9 +76,9 @@ targets_private_lock = Lock()
 private_targets = None
 targets_private_dirty = False
 
-private_locks = [waypoints_private_lock, motor_speed_private_lock, state_coordinate_private_lock, state_color_private_lock, obstacles_private_lock, targets_private_lock]
-private_data = [private_waypoints, private_motor_speed, private_state_coordinate, private_state_color, private_obstacles, private_targets]
-private_dirty = [waypoints_private_dirty, motor_speed_private_dirty, state_coordinate_private_dirty, state_color_private_dirty, obstacles_private_dirty, targets_private_dirty]
+private_locks = [waypoints_private_lock, motor_offset_private_lock, state_coordinate_private_lock, state_color_private_lock, obstacles_private_lock, targets_private_lock]
+private_data = [private_waypoints, private_motor_offset, private_state_coordinate, private_state_color, private_obstacles, private_targets]
+private_dirty = [waypoints_private_dirty, motor_offset_private_dirty, state_coordinate_private_dirty, state_color_private_dirty, obstacles_private_dirty, targets_private_dirty]
 
 # in from: list of tuples representing objects, etc.
 def vision(obstacles_lock, obstacles_dirty, obstacles, \
@@ -86,10 +86,10 @@ def vision(obstacles_lock, obstacles_dirty, obstacles, \
     pass
 # out to: motor speed, sensor data
 # in from: our position
-def localization(motor_speed_lock, motor_speed_dirty, motor_speed, \
+def localization(motor_offset_lock, motor_offset_dirty, motor_offset, \
                  state_coordinate_lock, state_coordinate_dirty, state_coordinate, \
                  state_color_lock, state_color_dirty, state_color):
-    my_motor_speed = None
+    my_motor_offset = None
 
     my_state_coordinate = None
     my_state_color = None
@@ -109,7 +109,7 @@ def localization(motor_speed_lock, motor_speed_dirty, motor_speed, \
         state_color_dirty = True
         state_color_lock.release()
 
-        #time.sleep(0.0005)
+#time.sleep(0.0005)
 # out to: locations, objects we see, bases, obstacles (tuples)
 # in from: list of waypoints
 def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
@@ -137,7 +137,7 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
             my_obstacles = obstacles
             obstacles_dirty.clear()
             obstacles_lock.release()
-            
+
         if (targets_dirty.is_set()):
             targets_lock.acquire()
             my_targets = targets
@@ -167,7 +167,7 @@ def path_planning(obstacles_lock, obstacles_dirty, obstacles, \
 # out to: list of waypoints
 # in from: motor speed
 def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
-                  motor_speed_lock, motor_speed_dirty, motor_speed):
+                  motor_offset_lock, motor_offset_dirty, motor_offset):
  
     mc = MotorController(5, 10.0, 0.1, 3)
     my_waypoints = None
@@ -184,10 +184,10 @@ def motor_control(waypoints_lock, waypoints_dirty, waypoints, \
         mc.run(my_waypoints)
         
         # acqure and write new speed
-        motor_speed_lock.acquire()
-        motor_speed = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
-        motor_speed_dirty = True
-        motor_speed_lock.release()
+        motor_offset_lock.acquire()
+        motor_offset = mc.getSpeeds() # left and right motor speed TODO - also times? how do we incorporate that?
+        motor_offset_dirty = True
+        motor_offset_lock.release()
 
 if __name__ == '__main__':
 
@@ -197,7 +197,7 @@ if __name__ == '__main__':
     vision_proc = Thread(target=vision, args=((obstacles_private_lock),(obstacles_private_dirty),(private_obstacles), \
                                               (targets_private_lock),(targets_private_dirty),(private_targets),))
     
-    localization_proc = Thread(target=localization, args=((motor_speed_public_lock),(motor_speed_public_dirty),(public_motor_speed), \
+    localization_proc = Thread(target=localization, args=((motor_offset_public_lock),(motor_offset_public_dirty),(public_motor_offset), \
                                                           (state_coordinate_private_lock),(state_coordinate_private_dirty),(private_state_coordinate), \
                                                           (state_color_private_lock),(state_color_private_dirty),(private_state_color),))
     
@@ -208,7 +208,7 @@ if __name__ == '__main__':
                                                         (waypoints_private_lock),(waypoints_private_dirty),(private_waypoints),))
     
     motor_control_proc = Thread(target=motor_control, args=((waypoints_public_lock),(waypoints_public_dirty),(public_waypoints), \
-                                                            (motor_speed_private_lock),(motor_speed_private_dirty),(private_motor_speed),))
+                                                            (motor_offset_private_lock),(motor_offset_private_dirty),(private_motor_offset),))
 
     vision_proc.setDaemon(True)
     localization_proc.setDaemon(True)
@@ -226,8 +226,8 @@ if __name__ == '__main__':
     # loop copies of locked data
     agent_waypoints = None
     agent_waypoints_dirty = False
-    agent_motor_speed = 0
-    agent_motor_speed_dirty = False
+    agent_motor_offset = 0
+    agent_motor_offset_dirty = False
     agent_state_coordinate = None
     agent_state_coordinate_dirty = False
     agent_state_color = None
@@ -237,8 +237,8 @@ if __name__ == '__main__':
     agent_targets = None
     agent_targets_dirty = False
 
-    agent_data = [agent_waypoints, agent_motor_speed, agent_state_coordinate, agent_state_color, agent_obstacles, agent_targets]
-    agent_dirty = [agent_waypoints_dirty, agent_motor_speed_dirty, agent_state_coordinate_dirty, agent_state_color_dirty, agent_obstacles_dirty, \
+    agent_data = [agent_waypoints, agent_motor_offset, agent_state_coordinate, agent_state_color, agent_obstacles, agent_targets]
+    agent_dirty = [agent_waypoints_dirty, agent_motor_offset_dirty, agent_state_coordinate_dirty, agent_state_color_dirty, agent_obstacles_dirty, \
         agent_targets_dirty]
 
     num_data_vectors = len(names_map)
